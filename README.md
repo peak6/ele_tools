@@ -33,7 +33,7 @@ Installing Administration Schema
 
 These libraries also provide a schema for administration purposes. Some CLI tools might report to this system, and others might use it as a point of reference. To install this schema, execute the `create_schema.sql` source script on the desired administrative database target as a database superuser:
 
-    psql -f create_functions.sql util
+    psql -f create_schema.sql util
 
 To grant usage to these objects to non superusers, grant access using the `util_exec` role:
 
