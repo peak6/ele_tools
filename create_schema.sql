@@ -84,7 +84,8 @@ BEGIN
   SELECT INTO rInst *
     FROM utility.util_instance
    WHERE db_host = sHost
-     AND instance = sInstance;
+     AND instance = sInstance
+     FOR UPDATE;
 
   -- If the above query does not locate this instance, dump all of the fields
   -- into the tracking table unchanged. Subsequent registration calls will
