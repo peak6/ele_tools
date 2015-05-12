@@ -1,0 +1,12 @@
+Source: pgutil
+Maintainer: Shaun M. Thomas <sthomas@peak6.com>
+Section: python
+Priority: optional
+Build-Depends: python-setuptools (>= 0.6b3), python-all (>= 2.6.6-3), debhelper (>= 7.4.3)
+Standards-Version: 3.9.1
+
+Package: python-pgutil
+Architecture: all
+Depends: ${misc:Depends}, ${python:Depends}, psycopg2
+Description: PGUtil adds several Python helper classes for managing PostgreSQL server instances.
+
