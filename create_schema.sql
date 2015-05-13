@@ -33,17 +33,19 @@ SET search_path TO utility;
 
 CREATE TABLE IF NOT EXISTS util_instance
 (
-  instance_id  SERIAL   PRIMARY KEY,
-  db_host      VARCHAR  NOT NULL,
-  instance     VARCHAR  NOT NULL,
-  db_port      INT      NOT NULL,
-  version      VARCHAR  NOT NULL,
-  duty         VARCHAR  NOT NULL DEFAULT 'master',
-  db_user      VARCHAR  NOT NULL,
-  is_online    BOOLEAN  NOT NULL DEFAULT TRUE,
-  pgdata       VARCHAR  NOT NULL,
-  master_host  VARCHAR  NULL,
-  master_port  INT      NULL,
+  instance_id  SERIAL     PRIMARY KEY,
+  db_host      VARCHAR    NOT NULL,
+  instance     VARCHAR    NOT NULL,
+  db_port      INT        NOT NULL,
+  version      VARCHAR    NOT NULL,
+  duty         VARCHAR    NOT NULL DEFAULT 'master',
+  db_user      VARCHAR    NOT NULL,
+  is_online    BOOLEAN    NOT NULL DEFAULT TRUE,
+  pgdata       VARCHAR    NOT NULL,
+  master_host  VARCHAR    NULL,
+  master_port  INT        NULL,
+  created_dt   TIMESTAMP  NOT NULL DEFAULT now(),
+  modified_dt  TIMESTAMP  NOT NULL DEFAULT now()
   UNIQUE (db_host, instance)
 );
 
@@ -137,3 +139,53 @@ GRANT EXECUTE ON FUNCTION sp_instance_checkin(
   VARCHAR, VARCHAR, INT, VARCHAR, VARCHAR,
   VARCHAR, BOOLEAN, VARCHAR, VARCHAR, INT
 ) TO util_exec;
+
+
+/**
+* Update created/modified timestamp automatically
+*
+* This function maintains two metadata columns on any table that uses
+* it in a trigger. These columns include:
+*
+*  - created_dt  : Set to when the row first enters the table.
+*  - modified_at : Set to when the row is ever changed in the table.
+*
+* @return object  NEW
+*/
+CREATE OR REPLACE FUNCTION sp_audit_stamps()
+RETURNS TRIGGER AS
+$$
+BEGIN
+
+  -- All inserts get a new timestamp to mark their creation. Any updates should
+  -- inherit the timestamp of the old version. In either case, a modified
+  -- timestamp is applied to track the last time the row was changed.
+
+  IF TG_OP = 'INSERT' THEN
+    NEW.created_dt = now();
+  ELSE
+    NEW.created_dt = OLD.created_dt;
+  END IF;
+
+  NEW.modified_dt = now();
+
+  RETURN NEW;
+
+END;
+$$ LANGUAGE plpgsql;
+
+REVOKE EXECUTE
+    ON FUNCTION update_audit_stamps()
+  FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION sp_audit_stamps()
+   TO util_exec;
+
+--------------------------------------------------------------------------------
+-- CREATE TRIGGERS
+--------------------------------------------------------------------------------
+
+CREATE TRIGGER t_util_instance_timestamp_b_iu
+BEFORE INSERT OR UPDATE ON util_instance
+   FOR EACH ROW EXECUTE PROCEDURE sp_audit_stamps();
+

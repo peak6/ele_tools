@@ -1,6 +1,7 @@
 
 import re
 import os
+import socket
 import getpass
 import psycopg2
 import psycopg2.extras
@@ -114,12 +115,20 @@ class Instance(object):
                     continue
 
                 self.role = 'slave'
-                self.master_host = 'localhost'
+
+                # Because the host and port parameters are optional if this is
+                # a local slave, or the master is on the default port, set them
+                # explicitly to default local values and override from 
+                # recovery.conf values.
+
+                self.master_host = socket.gethostname()
                 self.master_port = 5432
 
                 info = re.search('host\s?=\s?([\w\.-_]+)', line)
                 if info:
-                    self.master_host = info.groups(1)
+                    host = info.groups(1)[0]
+                    if host != 'localhost':
+                        self.master_host = host
 
                 info = re.search('port\s?=\s?(\d+)', line)
                 if info:
