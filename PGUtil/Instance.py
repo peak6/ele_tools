@@ -61,6 +61,7 @@ class Instance(object):
     pgdata = None
     master_host = None
     master_port = None
+    invalid = False
 
     error = None
     databases = {}
@@ -98,6 +99,17 @@ class Instance(object):
                 continue
 
             setattr(self, key, val)
+
+        # Since the instance might be down, try to get the version from the
+        # PG_VERSION file. If that doesn't even exist, this instance is
+        # invalid, and should be noted as such. If the database is up, we'll
+        # get more accurate version information after connecting.
+
+        try:
+            vfile = file(os.path.join(self.pgdata, 'PG_VERSION'))
+            self.version = vfile.readline().rstrip('\n')
+        except:
+            self.invalid = True
 
         # Check to see if the instance has a recovery.conf file, and what
         # might be going on in there. At the very least, grab the name
@@ -158,7 +170,8 @@ class Instance(object):
                 'template1', self.port)
 
             # Now that we're connected, get the most up-to-date system
-            # version.
+            # version. This should override the value obtained from PG_VERSION
+            # since it's more precise.
 
             cur = temp_conn.cursor()
             cur.execute("SELECT substring(version() FROM '\d+\.\d+\.\d+')")

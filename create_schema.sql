@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS util_instance
   master_host  VARCHAR    NULL,
   master_port  INT        NULL,
   created_dt   TIMESTAMP  NOT NULL DEFAULT now(),
-  modified_dt  TIMESTAMP  NOT NULL DEFAULT now()
+  modified_dt  TIMESTAMP  NOT NULL DEFAULT now(),
   UNIQUE (db_host, instance)
 );
 
@@ -108,6 +108,8 @@ BEGIN
   -- Of the mentioned relevant fields in our header, only update when those
   -- elements change. Normally we'd ignore the pgdata entry, but until our
   -- systems adhere to the recommended SOP, many of these could change.
+  -- Because the version may depend on the instance being up to get the
+  -- full value, we'll use the highest between the two.
 
   IF (sDuty, bOnline, sMasterHost, nMasterPort, sVer, sDataDir)
        IS DISTINCT FROM
@@ -119,7 +121,12 @@ BEGIN
            is_online = bOnline,
            master_host = sMasterHost,
            master_port = nMasterPort,
-           version = sVer,
+           version = array_to_string(
+                       GREATEST(
+                         string_to_array(rInst.version, '.')::INT[],
+                         string_to_array(sVer, '.')::INT[]
+                       ), '.'
+                     ),
            pgdata = COALESCE(pgdata, sDataDir)
      WHERE db_host = sHost
        AND instance = sInstance;
@@ -175,10 +182,11 @@ END;
 $$ LANGUAGE plpgsql;
 
 REVOKE EXECUTE
-    ON FUNCTION update_audit_stamps()
+    ON FUNCTION sp_audit_stamps()
   FROM PUBLIC;
 
-GRANT EXECUTE ON FUNCTION sp_audit_stamps()
+GRANT EXECUTE
+   ON FUNCTION sp_audit_stamps()
    TO util_exec;
 
 --------------------------------------------------------------------------------
