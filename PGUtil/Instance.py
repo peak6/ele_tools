@@ -9,17 +9,17 @@ import psycopg2.extras
 
 def db_connect(host, user, db, port = 5432):
     """ Connect to the indicated database and return the connection object.
-    
+
     This is a helper function for utilities that need to connect to a
     database. The Instance class will enforce local connections, but reporting
     tools or other uses might need a remote connection. Make this easy.
-    
+
     :param host: Hostname of the database to connect to.
     :param user: DB username to use while connecting. Needs .pgpass or peer
         auth enabled.
     :param db: Name of the database for this connection.
     :param port: Port for the target PG instance. Default: 5432.
-    
+
     :retval connection: A psycopg2 connection object with autocommit enabled
         to encourage explicit transaction management if necessary.
     """
@@ -168,6 +168,8 @@ class Instance(object):
         try:
             temp_conn = db_connect('localhost', getpass.getuser(),
                 'template1', self.port)
+
+            self.online = True
 
             # Now that we're connected, get the most up-to-date system
             # version. This should override the value obtained from PG_VERSION

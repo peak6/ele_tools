@@ -35,13 +35,14 @@ class Environment(object):
 
         if not spawn.find_executable('pg_lsclusters'):
             self.instances['main'] = Instance(
-                name = 'main', port = 5432, user = getpass.getuser(),
-                online = True
+                name = 'main', port = 5432, user = getpass.getuser()
             )
             return
 
         # Otherwise, get a list of all running instance ports. Attempt to
-        # register each one according to pg_lscluster output fields.
+        # register each one according to pg_lscluster output fields. We also
+        # need to separate the instances by version, since that's how these
+        # systems organize installed clusters: name + version.
 
         output = subprocess.check_output(
             ('pg_lsclusters', '--no-header'),
@@ -55,7 +56,7 @@ class Environment(object):
             fields = re.split('\s+', line)
             (ver, name, port, status, user, pgdata) = fields[:6]
 
-            self.instances[name] = Instance(
+            self.instances[name + ':' + ver] = Instance(
                 name = name,
                 port = port,
                 user = user,

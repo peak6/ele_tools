@@ -1,3 +1,10 @@
+pgutil (0.1.2-1) unstable; urgency=low
+
+  * Fixes to pg_lscluster instance grouping.
+
+ -- Shaun Thomas <sthomas@peak6.com>  Thu, 25 Jun 2015 09:23:38 -0500
+
+
 pgutil (0.1.0-1) unstable; urgency=low
 
   * Initial release

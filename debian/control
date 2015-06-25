@@ -2,7 +2,7 @@ Source: pgutil
 Maintainer: Shaun M. Thomas <sthomas@peak6.com>
 Section: python
 Priority: optional
-Build-Depends: python-setuptools (>= 0.6b3), python-all (>= 2.6.6-3), debhelper (>= 7.4.3), ${python:Depends}
+Build-Depends: python-setuptools (>= 0.6b3), python-all (>= 2.6.6-3), debhelper (>= 7.4.3), python-psycopg2
 Standards-Version: 3.9.1
 
 Package: python-pgutil
