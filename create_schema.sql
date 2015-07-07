@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS util_instance
   pgdata       VARCHAR    NOT NULL,
   master_host  VARCHAR    NULL,
   master_port  INT        NULL,
+  environment  VARCHAR    NULL,
   created_dt   TIMESTAMP  NOT NULL DEFAULT now(),
   modified_dt  TIMESTAMP  NOT NULL DEFAULT now(),
   UNIQUE (db_host, instance)
