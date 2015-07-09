@@ -42,8 +42,7 @@ CREATE TABLE IF NOT EXISTS util_instance
   db_user      VARCHAR    NOT NULL,
   is_online    BOOLEAN    NOT NULL DEFAULT TRUE,
   pgdata       VARCHAR    NOT NULL,
-  master_host  VARCHAR    NULL,
-  master_port  INT        NULL,
+  master_id    INT        NULL,
   environment  VARCHAR    NULL,
   created_dt   TIMESTAMP  NOT NULL DEFAULT now(),
   modified_dt  TIMESTAMP  NOT NULL DEFAULT now(),
@@ -52,6 +51,10 @@ CREATE TABLE IF NOT EXISTS util_instance
 
 GRANT ALL ON util_instance TO util_exec;
 GRANT ALL ON util_instance_instance_id_seq TO util_exec;
+
+ALTER TABLE util_instance
+  ADD CONSTRAINT fk_instance_master_id_instance_id FOREIGN KEY
+      (master_id) REFERENCES util_instance (instance_id);
 
 --------------------------------------------------------------------------------
 -- CREATE FUNCTIONS
@@ -83,6 +86,7 @@ RETURNS VOID
 AS $$
 DECLARE
   rInst utility.util_instance%ROWTYPE;
+  nRep  INT;
 BEGIN
   SELECT INTO rInst *
     FROM utility.util_instance
@@ -106,22 +110,33 @@ BEGIN
     RETURN;
   END IF;
 
+  -- If the replica information has changed, look up the instance of the
+  -- referring reference.
+
+  IF (sMasterHost, nMasterPort)
+       IS DISTINCT FROM
+     (rInst.master_host, rInst.master_port)
+  THEN
+    SELECT INTO nRep instance_id
+      FROM util_instance
+     WHERE db_host = sMasterHost
+       AND db_port = nMasterPort;
+  END IF;
+
   -- Of the mentioned relevant fields in our header, only update when those
   -- elements change. Normally we'd ignore the pgdata entry, but until our
   -- systems adhere to the recommended SOP, many of these could change.
   -- Because the version may depend on the instance being up to get the
   -- full value, we'll use the highest between the two.
 
-  IF (sDuty, bOnline, sMasterHost, nMasterPort, sVer, sDataDir)
+  IF (sDuty, bOnline, nRep, sVer, sDataDir)
        IS DISTINCT FROM
-     (rInst.duty, rInst.is_online, rInst.master_host, rInst.master_port,
-      rInst.version, rInst.pgdata)
+     (rInst.duty, rInst.is_online, rInst.master_id, rInst.version, rInst.pgdata)
   THEN
     UPDATE utility.util_instance
        SET duty = sDuty,
            is_online = bOnline,
-           master_host = sMasterHost,
-           master_port = nMasterPort,
+           master_id = nRep,
            version = array_to_string(
                        GREATEST(
                          string_to_array(rInst.version, '.')::INT[],
