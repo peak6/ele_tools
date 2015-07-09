@@ -8,5 +8,6 @@ Standards-Version: 3.9.1
 Package: python-pgutil
 Architecture: all
 Depends: ${misc:Depends}, ${python:Depends}, python-psycopg2
-Description: PGUtil adds several Python helper classes for managing PostgreSQL server instances.
+Description: PGUtil adds several Python helper classes for 
+managing PostgreSQL server instances.
 
