@@ -110,18 +110,13 @@ BEGIN
     RETURN;
   END IF;
 
-  -- If the replica information has changed, look up the instance of the
+  -- Thee replica information may have changed, look up the instance of the
   -- referring reference.
 
-  IF (sMasterHost, nMasterPort)
-       IS DISTINCT FROM
-     (rInst.master_host, rInst.master_port)
-  THEN
-    SELECT INTO nRep instance_id
-      FROM util_instance
-     WHERE db_host = sMasterHost
-       AND db_port = nMasterPort;
-  END IF;
+  SELECT INTO nRep instance_id
+    FROM utility.util_instance
+   WHERE db_host = sMasterHost
+     AND db_port = nMasterPort;
 
   -- Of the mentioned relevant fields in our header, only update when those
   -- elements change. Normally we'd ignore the pgdata entry, but until our
