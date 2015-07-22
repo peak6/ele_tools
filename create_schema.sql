@@ -56,6 +56,30 @@ ALTER TABLE util_instance
   ADD CONSTRAINT fk_instance_master_id_instance_id FOREIGN KEY
       (master_id) REFERENCES util_instance (instance_id);
 
+
+CREATE TABLE IF NOT EXISTS util_drpair
+(
+  drpair_id     SERIAL     PRIMARY KEY,
+  label         VARCHAR    NOT NULL,
+  primary_id    INT        NOT NULL,
+  secondary_id  INT        NOT NULL,
+  vhost         VARCHAR    NULL,
+  in_sync       BOOLEAN    NOT NULL DEFAULT false,
+  created_dt    TIMESTAMP  NOT NULL DEFAULT now(),
+  modified_dt   TIMESTAMP  NOT NULL DEFAULT now()
+);
+
+GRANT ALL ON util_drpair TO util_exec;
+GRANT ALL ON util_drpair_drpair_id_seq TO util_exec;
+
+ALTER TABLE util_drpair
+  ADD CONSTRAINT fk_drpair_primary_id_instance_id FOREIGN KEY
+      (primary_id) REFERENCES util_instance (instance_id);
+
+ALTER TABLE util_drpair
+  ADD CONSTRAINT fk_drpair_secondary_id_instance_id FOREIGN KEY
+      (secondary_id) REFERENCES util_instance (instance_id);
+
 --------------------------------------------------------------------------------
 -- CREATE FUNCTIONS
 --------------------------------------------------------------------------------
@@ -88,35 +112,40 @@ DECLARE
   rInst utility.util_instance%ROWTYPE;
   nRep  INT;
 BEGIN
+
+  -- Look for any existing instances. If we find one, this will need to be an
+  -- update. Lock accordingly. We do this first to avoid possible race
+  -- conditions.
+
   SELECT INTO rInst *
     FROM utility.util_instance
    WHERE db_host = sHost
      AND instance = sInstance
      FOR UPDATE;
 
+  -- If there's master information, look up the instance of the referring
+  -- reference.
+
+  IF sMasterHost IS NOT NULL THEN
+    SELECT INTO nRep instance_id
+      FROM utility.util_instance
+     WHERE db_host = sMasterHost
+       AND db_port = nMasterPort;
+  END IF;
+
   -- If the above query does not locate this instance, dump all of the fields
   -- into the tracking table unchanged. Subsequent registration calls will
   -- fall through to the next section.
 
-  IF NOT FOUND THEN
+  IF rInst.instance_id IS NULL THEN
     INSERT INTO utility.util_instance (
-        db_host, instance, db_port, version, duty, db_user, is_online, pgdata,
-        master_host, master_port
+        db_host, instance, db_port, version, duty, db_user, is_online, pgdata
     ) VALUES (
-        sHost, sInstance, nPort, sVer, sDuty, sUser, bOnline, sDataDir,
-        sMasterHost, nMasterPort
+        sHost, sInstance, nPort, sVer, sDuty, sUser, bOnline, sDataDir
     );
 
     RETURN;
   END IF;
-
-  -- Thee replica information may have changed, look up the instance of the
-  -- referring reference.
-
-  SELECT INTO nRep instance_id
-    FROM utility.util_instance
-   WHERE db_host = sMasterHost
-     AND db_port = nMasterPort;
 
   -- Of the mentioned relevant fields in our header, only update when those
   -- elements change. Normally we'd ignore the pgdata entry, but until our
@@ -208,3 +237,6 @@ CREATE TRIGGER t_util_instance_timestamp_b_iu
 BEFORE INSERT OR UPDATE ON util_instance
    FOR EACH ROW EXECUTE PROCEDURE sp_audit_stamps();
 
+CREATE TRIGGER t_util_drpair_timestamp_b_iu
+BEFORE INSERT OR UPDATE ON util_drpair
+   FOR EACH ROW EXECUTE PROCEDURE sp_audit_stamps();
