@@ -23,6 +23,21 @@ $$ LANGUAGE plpgsql;
 
 GRANT USAGE ON SCHEMA utility TO util_exec;
 
+ALTER DEFAULT PRIVILEGES
+  FOR USER postgres
+   IN SCHEMA utility
+GRANT ALL ON TABLES TO util_exec;
+
+ALTER DEFAULT PRIVILEGES
+  FOR USER postgres
+   IN SCHEMA utility
+GRANT USAGE ON SEQUENCES TO util_exec;
+
+ALTER DEFAULT PRIVILEGES
+  FOR USER postgres
+   IN SCHEMA utility
+GRANT EXECUTE ON FUNCTIONS TO util_exec;
+
 -- Switch to the utility schema for all subsequent work.
 
 SET search_path TO utility;
@@ -31,58 +46,151 @@ SET search_path TO utility;
 -- CREATE TABLES
 --------------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS util_instance
+/* Tables are supplied by elephaas project, and these versions might
+   not be up to date */
+
+CREATE TABLE IF NOT EXISTS ele_environment
 (
-  instance_id  SERIAL     PRIMARY KEY,
-  db_host      VARCHAR    NOT NULL,
-  instance     VARCHAR    NOT NULL,
-  db_port      INT        NOT NULL,
-  version      VARCHAR    NOT NULL,
-  duty         VARCHAR    NOT NULL DEFAULT 'master',
-  db_user      VARCHAR    NOT NULL,
-  is_online    BOOLEAN    NOT NULL DEFAULT TRUE,
-  pgdata       VARCHAR    NOT NULL,
-  master_id    INT        NULL,
-  environment  VARCHAR    NULL,
-  created_dt   TIMESTAMP  NOT NULL DEFAULT now(),
-  modified_dt  TIMESTAMP  NOT NULL DEFAULT now(),
-  UNIQUE (db_host, instance)
+  environment_id  SERIAL NOT NULL PRIMARY KEY,
+  env_name        VARCHAR(40) NOT NULL,
+  env_descr       text NOT NULL,
+  created_dt      TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+  modified_dt     TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL
 );
 
-GRANT ALL ON util_instance TO util_exec;
-GRANT ALL ON util_instance_instance_id_seq TO util_exec;
-
-ALTER TABLE util_instance
-  ADD CONSTRAINT fk_instance_master_id_instance_id FOREIGN KEY
-      (master_id) REFERENCES util_instance (instance_id);
-
-
-CREATE TABLE IF NOT EXISTS util_drpair
+CREATE TABLE IF NOT EXISTS ele_herd
 (
-  drpair_id     SERIAL     PRIMARY KEY,
-  label         VARCHAR    NOT NULL,
-  primary_id    INT        NOT NULL,
-  secondary_id  INT        NOT NULL,
-  vhost         VARCHAR    NULL,
-  in_sync       BOOLEAN    NOT NULL DEFAULT false,
-  created_dt    TIMESTAMP  NOT NULL DEFAULT now(),
-  modified_dt   TIMESTAMP  NOT NULL DEFAULT now()
+    herd_id         SERIAL NOT NULL PRIMARY KEY,
+    environment_id  INTEGER NOT NULL REFERENCES ele_environment (environment_id),
+    herd_name       VARCHAR NOT NULL,
+    herd_descr      VARCHAR,
+    db_port         INTEGER NOT NULL,
+    pgdata          VARCHAR NOT NULL,
+    vhost           VARCHAR NOT NULL,
+    created_dt      TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+    modified_dt     TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL
 );
 
-GRANT ALL ON util_drpair TO util_exec;
-GRANT ALL ON util_drpair_drpair_id_seq TO util_exec;
+CREATE TABLE IF NOT EXISTS ele_server
+(
+    server_id       SERIAL NOT NULL PRIMARY KEY,
+    hostname        VARCHAR(40) NOT NULL,
+    created_dt      TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+    modified_dt     TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+    environment_id  INTEGER REFERENCES ele_environment (environment_id)
+);
 
-ALTER TABLE util_drpair
-  ADD CONSTRAINT fk_drpair_primary_id_instance_id FOREIGN KEY
-      (primary_id) REFERENCES util_instance (instance_id);
+CREATE INDEX idx_server_environment_id ON ele_server (environment_id);
 
-ALTER TABLE util_drpair
-  ADD CONSTRAINT fk_drpair_secondary_id_instance_id FOREIGN KEY
-      (secondary_id) REFERENCES util_instance (instance_id);
+CREATE TABLE IF NO EXISTS ele_instance
+(
+    instance_id   SERIAL NOT NULL PRIMARY KEY,
+    version       VARCHAR(10) NOT NULL,
+    local_pgdata  VARCHAR(100) NOT NULL,
+    xlog_pos      BIGINT,
+    is_online     BOOLEAN NOT NULL,
+    created_dt    TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+    modified_dt   TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+    herd_id       INTEGER NOT NULL REFERENCES ele_herd (herd_id),
+    server_id     INTEGER NOT NULL REFERENCES ele_server (server_id),
+    master_id     INTEGER REFERENCES ele_instance (instance_id)
+);
+
+CREATE INDEX idx_instance_server_id ON ele_instance (server_id);
+CREATE INDEX idx_instance_herd_id ON ele_instance (herd_id);
+CREATE INDEX idx_instance_master_id ON ele_instance (master_id);
+
+--------------------------------------------------------------------------------
+-- CREATE VIEWS
+--------------------------------------------------------------------------------
+
+CREATE OR REPLACE VIEW v_dr_pairs AS
+SELECT DISTINCT ON (herd_id)
+       r.herd_id, r.instance_id, r.master_id, r.server_id,
+       round(abs(coalesce(p.xlog_pos, 0) - coalesce(r.xlog_pos, 0)) / 1024.0, 1) AS mb_lag,
+       h.vhost
+  FROM ele_instance r
+  JOIN ele_instance p ON (p.instance_id = r.master_id)
+  JOIN ele_herd h ON (h.herd_id = r.herd_id)
+ WHERE r.is_online
+   AND r.master_id IS NOT NULL
+ ORDER BY herd_id, mb_lag DESC, r.instance_id;
+
+CREATE OR REPLACE VIEW v_flat_instance AS
+SELECT i.instance_id, i.version, h.pgdata, i.local_pgdata, i.xlog_pos,
+       i.is_online, h.herd_name, h.db_port, h.vhost,
+       s.server_id, s.hostname, i.master_id,
+       e.environment_id, e.env_name
+  FROM utility.ele_instance i
+  JOIN utility.ele_herd h USING (herd_id)
+  JOIN utility.ele_environment e USING (environment_id)
+  JOIN utility.ele_server s USING (server_id);
+
 
 --------------------------------------------------------------------------------
 -- CREATE FUNCTIONS
 --------------------------------------------------------------------------------
+
+/**
+* Get Server ID Based on Hostname, or Add a New Entry
+*
+* Since this process cannot figure out the environment the server belongs to,
+* we can only insert new servers by hostname. Because herds are tied to
+* environment, we can't properly identify the herd of a new instance without
+* this. Thus after this function inserts a new server, someone will need to
+* log into the elephaas interface itself and apply an environment.
+*
+* Then the autodiscovery process will be able to register new instances.
+*
+* @param sHost String of the hostname we're checking/adding.
+*
+* @return INT server ID for listed hostname.
+*/
+CREATE OR REPLACE FUNCTION sp_discover_server(sHost VARCHAR)
+RETURNS INT
+AS $$
+DECLARE
+  nServer INT;
+BEGIN
+  SELECT INTO nServer server_id
+    FROM utility.ele_server
+   WHERE hostname = lower(sHost);
+
+  -- Insert the server if it wasn't found before. Servers added this way
+  -- will need to have an environment associated later before instances
+  -- can be auto-discovered here.
+
+  IF NOT FOUND THEN
+    INSERT INTO utility.ele_server (hostname)
+    VALUES (lower(sHost))
+    RETURNING server_id INTO nServer;
+  END IF;
+
+  RETURN nServer;
+
+END;
+$$ LANGUAGE plpgsql;
+
+
+/**
+* Get Herd ID Based on Name, Port, and Environment ID.
+*
+* @param sHost String of the herd name we're checking.
+* @param nPort Port number this herd uses for connecting.
+* @param nEnv Environment ID; necessary to differentiate similar herds.
+*
+* @return INT Herd ID we're searching for.
+*/
+CREATE OR REPLACE FUNCTION sp_get_herd(sName VARCHAR, nPort INT, nEnv INT)
+RETURNS INT
+AS $$
+  SELECT herd_id
+    FROM utility.ele_herd
+   WHERE herd_name = lower(sName)
+     AND db_port = nPort
+     AND environment_id = nEnv;
+$$ LANGUAGE SQL;
+
 
 /**
 * Register instance information or changes
@@ -93,55 +201,88 @@ ALTER TABLE util_drpair
 * - Deflect duplicate inserts.
 * - Catch relevant changes
 *
-* In effect, we'll track new instances the first time they're encountered.
-* Subsequent modifications will only be made if one of these items changes:
+* In effect, we'll track new instances the first time they're encountered,
+* and modify existing instances with newly updated details as the xlog
+* position moves, or something gets shut down, for example.
 *
-* - duty : Changing the server between master and slave is important.
-* - is_online : Attempt to always know the current state of all instances.
-* - master_host : Track upstream replication changes where applicable.
-* - master_port : The port is relevant to the above as well.
+* All of the "DEFAULT" parameters is optional because there are so many of
+* them. The best use of this function is to call it with named arguments
+* and only pass data that has changed since the last call. The presumption
+* here is that only automated systems will invoke this.
 */
 CREATE OR REPLACE FUNCTION sp_instance_checkin(
-  sHost VARCHAR, sInstance VARCHAR, nPort INT, sVer VARCHAR,
-  sDuty VARCHAR, sUser VARCHAR, bOnline BOOLEAN, sDataDir VARCHAR,
-  sMasterHost VARCHAR, nMasterPort INT
+  sHerd VARCHAR,
+  sHost VARCHAR,
+  nPort INT,
+  sVer VARCHAR DEFAULT NULL,
+  bOnline BOOLEAN DEFAULT NULL,
+  sDataDir VARCHAR DEFAULT NULL,
+  sMasterHost VARCHAR DEFAULT NULL,
+  nXlog BIGINT DEFAULT NULL
 )
 RETURNS VOID
 AS $$
 DECLARE
-  rInst utility.util_instance%ROWTYPE;
-  nRep  INT;
-BEGIN
+  rInst  RECORD;
+  rHerd  RECORD;
 
+  nLead  INT;
+  nSrv   INT;
+  sData  VARCHAR;
+BEGIN
   -- Look for any existing instances. If we find one, this will need to be an
   -- update. Lock accordingly. We do this first to avoid possible race
   -- conditions.
 
   SELECT INTO rInst *
-    FROM utility.util_instance
-   WHERE db_host = sHost
-     AND instance = sInstance
+    FROM utility.v_flat_instance
+   WHERE hostname = sHost
+     AND herd_name = sHerd
      FOR UPDATE;
 
   -- If there's master information, look up the instance of the referring
   -- reference.
 
   IF sMasterHost IS NOT NULL THEN
-    SELECT INTO nRep instance_id
-      FROM utility.util_instance
-     WHERE db_host = sMasterHost
-       AND db_port = nMasterPort;
+    SELECT INTO nLead instance_id
+      FROM utility.v_flat_instance
+     WHERE hostname = sMasterHost
+       AND herd_name = sHerd;
   END IF;
 
-  -- If the above query does not locate this instance, dump all of the fields
-  -- into the tracking table unchanged. Subsequent registration calls will
-  -- fall through to the next section.
+  -- If this instance doesn't exist, dump all of the fields into the tracking
+  -- table unchanged. Subsequent registration calls will fall through to the
+  -- next section.
 
   IF rInst.instance_id IS NULL THEN
-    INSERT INTO utility.util_instance (
-        db_host, instance, db_port, version, duty, db_user, is_online, pgdata
+
+    -- Try to get the existing herd ID, Server ID. If we can't find either
+    -- of these, do not capture the instance. More needs to be done in the
+    -- admin interface to describe the environment or create a representative
+    -- herd.
+
+    nSrv = utility.sp_discover_server(sHost);
+
+    SELECT INTO rHerd herd_id, pgdata
+      FROM utility.ele_herd h
+     WHERE herd_name = lower(sHerd)
+       AND db_port = nPort
+       AND environment_id = (SELECT environment_id FROM utility.ele_server
+                              WHERE server_id = nSrv);
+
+    IF nSrv IS NULL OR NOT FOUND THEN
+      RETURN;
+    END IF;
+
+    sData = '';
+    IF sDataDir != rHerd.pgdata THEN
+      sData = sDataDir;
+    END IF;
+
+    INSERT INTO utility.ele_instance (
+        version, local_pgdata, is_online, herd_id, server_id, master_id
     ) VALUES (
-        sHost, sInstance, nPort, sVer, sDuty, sUser, bOnline, sDataDir
+        sVer, sData, bOnline, rHerd.herd_id, nSrv, nLead
     );
 
     RETURN;
@@ -153,39 +294,28 @@ BEGIN
   -- Because the version may depend on the instance being up to get the
   -- full value, we'll use the highest between the two.
 
-  IF (sDuty, bOnline, nRep, sVer, sDataDir)
+  IF (bOnline, nLead, sVer, sDataDir, nXlog)
        IS DISTINCT FROM
-     (rInst.duty, rInst.is_online, rInst.master_id, rInst.version, rInst.pgdata)
+     (rInst.is_online, rInst.master_id, rInst.version, rInst.pgdata, rInst.xlog_pos)
   THEN
-    UPDATE utility.util_instance
-       SET duty = sDuty,
-           is_online = bOnline,
-           master_id = nRep,
+    UPDATE utility.ele_instance
+       SET is_online = COALESCE(bOnline, rInst.is_online),
+           master_id = COALESCE(nLead, rInst.master_id),
            version = array_to_string(
                        GREATEST(
                          string_to_array(rInst.version, '.')::INT[],
                          string_to_array(sVer, '.')::INT[]
                        ), '.'
                      ),
-           pgdata = COALESCE(pgdata, sDataDir)
-     WHERE db_host = sHost
-       AND instance = sInstance;
+           local_pgdata = COALESCE(sData, rInst.local_pgdata),
+           xlog_pos = COALESCE(nXlog, rInst.xlog_pos)
+     WHERE instance_id = rInst.instance_id;
   END IF;
 
   RETURN;
 
 END;
 $$ LANGUAGE plpgsql;
-
-REVOKE EXECUTE ON FUNCTION sp_instance_checkin(
-  VARCHAR, VARCHAR, INT, VARCHAR, VARCHAR,
-  VARCHAR, BOOLEAN, VARCHAR, VARCHAR, INT
-) FROM PUBLIC;
-
-GRANT EXECUTE ON FUNCTION sp_instance_checkin(
-  VARCHAR, VARCHAR, INT, VARCHAR, VARCHAR,
-  VARCHAR, BOOLEAN, VARCHAR, VARCHAR, INT
-) TO util_exec;
 
 
 /**
@@ -199,7 +329,7 @@ GRANT EXECUTE ON FUNCTION sp_instance_checkin(
 *
 * @return object  NEW
 */
-CREATE OR REPLACE FUNCTION sp_audit_stamps()
+CREATE OR REPLACE FUNCTION PUBLIC.sp_audit_stamps()
 RETURNS TRIGGER AS
 $$
 BEGIN
@@ -233,10 +363,18 @@ GRANT EXECUTE
 -- CREATE TRIGGERS
 --------------------------------------------------------------------------------
 
-CREATE TRIGGER t_util_instance_timestamp_b_iu
-BEFORE INSERT OR UPDATE ON util_instance
+CREATE TRIGGER t_ele_instance_timestamp_b_iu
+BEFORE INSERT OR UPDATE ON ele_instance
    FOR EACH ROW EXECUTE PROCEDURE sp_audit_stamps();
 
-CREATE TRIGGER t_util_drpair_timestamp_b_iu
-BEFORE INSERT OR UPDATE ON util_drpair
+CREATE TRIGGER t_ele_herd_timestamp_b_iu
+BEFORE INSERT OR UPDATE ON ele_herd
+   FOR EACH ROW EXECUTE PROCEDURE sp_audit_stamps();
+
+CREATE TRIGGER t_ele_server_timestamp_b_iu
+BEFORE INSERT OR UPDATE ON ele_server
+   FOR EACH ROW EXECUTE PROCEDURE sp_audit_stamps();
+
+CREATE TRIGGER t_ele_environment_timestamp_b_iu
+BEFORE INSERT OR UPDATE ON ele_environment
    FOR EACH ROW EXECUTE PROCEDURE sp_audit_stamps();

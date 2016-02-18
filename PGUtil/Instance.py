@@ -62,6 +62,7 @@ class Instance(object):
     master_host = None
     master_port = None
     invalid = False
+    xlog_pos = None
 
     error = None
     databases = {}
@@ -91,6 +92,8 @@ class Instance(object):
                 continue
 
             val = kwargs[key]
+            if key == 'port':
+                val = int(kwargs[key])
 
             if key == 'role' and val not in ('master', 'slave'):
                 continue
@@ -144,7 +147,7 @@ class Instance(object):
 
                 info = re.search('port\s?=\s?(\d+)', line)
                 if info:
-                    self.master_port = info.groups(1)[0]
+                    self.master_port = int(info.groups(1)[0])
 
         # Finally, try to connect to all of the databases in the instance
         # and record those connections for later use.
@@ -176,8 +179,20 @@ class Instance(object):
             # since it's more precise.
 
             cur = temp_conn.cursor()
-            cur.execute("SELECT substring(version() FROM '\d+\.\d+\.\d+')")
+            SQL = "SELECT substring(version() FROM '\d+\.\d+\.\d+')"
+            cur.execute(SQL)
             self.version = cur.fetchone()[0]
+
+            # Capture the xlog position so callers can use the information
+            # to calculate replication lag.
+
+            usefunc = 'pg_current_xlog_location()'
+            if self.role == 'slave':
+                usefunc = 'pg_last_xlog_replay_location()'
+
+            SQL = "SELECT pg_xlog_location_diff(" + usefunc + ", '0/00000000')"
+            cur.execute(SQL)
+            self.xlog_pos = cur.fetchone()[0]
 
             # Try to connect individually to each database. At the end, we'll
             # be throwing away the temporary connection.
