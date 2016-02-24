@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS ele_server
 
 CREATE INDEX idx_server_environment_id ON ele_server (environment_id);
 
-CREATE TABLE IF NO EXISTS ele_instance
+CREATE TABLE IF NOT EXISTS ele_instance
 (
     instance_id   SERIAL NOT NULL PRIMARY KEY,
     version       VARCHAR(10) NOT NULL,
@@ -352,11 +352,11 @@ END;
 $$ LANGUAGE plpgsql;
 
 REVOKE EXECUTE
-    ON FUNCTION sp_audit_stamps()
+    ON FUNCTION PUBLIC.sp_audit_stamps()
   FROM PUBLIC;
 
 GRANT EXECUTE
-   ON FUNCTION sp_audit_stamps()
+   ON FUNCTION PUBLIC.sp_audit_stamps()
    TO util_exec;
 
 --------------------------------------------------------------------------------
@@ -365,16 +365,16 @@ GRANT EXECUTE
 
 CREATE TRIGGER t_ele_instance_timestamp_b_iu
 BEFORE INSERT OR UPDATE ON ele_instance
-   FOR EACH ROW EXECUTE PROCEDURE sp_audit_stamps();
+   FOR EACH ROW EXECUTE PROCEDURE PUBLIC.sp_audit_stamps();
 
 CREATE TRIGGER t_ele_herd_timestamp_b_iu
 BEFORE INSERT OR UPDATE ON ele_herd
-   FOR EACH ROW EXECUTE PROCEDURE sp_audit_stamps();
+   FOR EACH ROW EXECUTE PROCEDURE PUBLIC.sp_audit_stamps();
 
 CREATE TRIGGER t_ele_server_timestamp_b_iu
 BEFORE INSERT OR UPDATE ON ele_server
-   FOR EACH ROW EXECUTE PROCEDURE sp_audit_stamps();
+   FOR EACH ROW EXECUTE PROCEDURE PUBLIC.sp_audit_stamps();
 
 CREATE TRIGGER t_ele_environment_timestamp_b_iu
 BEFORE INSERT OR UPDATE ON ele_environment
-   FOR EACH ROW EXECUTE PROCEDURE sp_audit_stamps();
+   FOR EACH ROW EXECUTE PROCEDURE PUBLIC.sp_audit_stamps();
