@@ -7,9 +7,9 @@ SELECT DISTINCT environment, environment
 
 ANALYZE ele_environment;
 
-INSERT INTO ele_herd (environment_id, herd_name, db_port, vhost, pgdata)
+INSERT INTO ele_herd (environment_id, herd_name, herd_descr, db_port, vhost, pgdata)
 SELECT DISTINCT ON (environment_id, instance, db_port, pgdata)
-       e.environment_id, i.instance, i.db_port,
+       e.environment_id, i.instance, i.instance AS herd_descr, i.db_port,
        coalesce(p.vhost, 'pg-' || 
            CASE WHEN i.instance ~ 'ion_arc' THEN 'exarc'
                 WHEN i.instance ~ 't_arc' THEN 'baskets-arc'
@@ -23,7 +23,7 @@ SELECT DISTINCT ON (environment_id, instance, db_port, pgdata)
   FROM util_instance i
   JOIN ele_environment e ON (e.env_name = i.environment)
   LEFT JOIN util_drpair p ON (p.primary_id = i.instance_id)
- ORDER BY 1, 2, 3, 5, 4;
+ ORDER BY 1, 2, 4, 6, 5;
 
 ANALYZE ele_herd;
 
