@@ -114,11 +114,11 @@ SELECT DISTINCT ON (herd_id)
   JOIN ele_herd h ON (h.herd_id = r.herd_id)
  WHERE r.is_online
    AND r.master_id IS NOT NULL
- ORDER BY herd_id, mb_lag DESC, r.instance_id;
+ ORDER BY herd_id, mb_lag, r.instance_id;
 
 CREATE OR REPLACE VIEW v_flat_instance AS
 SELECT i.instance_id, i.version, h.pgdata, i.local_pgdata, i.xlog_pos,
-       i.is_online, h.herd_name, h.db_port, h.vhost,
+       i.is_online, h.base_name, h.herd_name, h.db_port, h.vhost,
        s.server_id, s.hostname, i.master_id,
        e.environment_id, e.env_name
   FROM utility.ele_instance i
@@ -186,7 +186,7 @@ RETURNS INT
 AS $$
   SELECT herd_id
     FROM utility.ele_herd
-   WHERE herd_name = lower(sName)
+   WHERE base_name = lower(sName)
      AND db_port = nPort
      AND environment_id = nEnv;
 $$ LANGUAGE SQL;
@@ -237,7 +237,7 @@ BEGIN
   SELECT INTO rInst *
     FROM utility.v_flat_instance
    WHERE hostname = sHost
-     AND herd_name = sHerd
+     AND base_name = sHerd
      FOR UPDATE;
 
   -- If there's master information, look up the instance of the referring
@@ -247,7 +247,7 @@ BEGIN
     SELECT INTO nLead instance_id
       FROM utility.v_flat_instance
      WHERE hostname = sMasterHost
-       AND herd_name = sHerd;
+       AND base_name = sHerd;
   END IF;
 
   -- If this instance doesn't exist, dump all of the fields into the tracking
@@ -265,7 +265,7 @@ BEGIN
 
     SELECT INTO rHerd herd_id, pgdata
       FROM utility.ele_herd h
-     WHERE herd_name = lower(sHerd)
+     WHERE base_name = lower(sHerd)
        AND db_port = nPort
        AND environment_id = (SELECT environment_id FROM utility.ele_server
                               WHERE server_id = nSrv);
