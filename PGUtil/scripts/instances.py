@@ -15,7 +15,7 @@ def main():
 
     args = parser.parse_args()
     scripts.init_logging(args.log, args.debug)
-    #sys.excepthook = scripts.handler
+    sys.excepthook = scripts.handler
 
     # For now, this tool only seeks connection to an external system to report
     # the instances.
@@ -45,6 +45,9 @@ def main():
     cur = conn.cursor()
 
     for inst in env.instances.values():
+
+        if inst.invalid:
+            continue;
 
         curr_info = dict(
             sHost = host, sHerd = inst.name, nPort = inst.port,

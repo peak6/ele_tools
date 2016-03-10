@@ -1,3 +1,10 @@
+pgutil (0.2.1-1) unstable; urgency=low
+
+  * Fixed issue where invalid instances prevent further transmission.
+  * Now sort DR pairs properly by ascending lag.
+
+ -- Shaun Thomas <sthomas@peak6.com>  Thu, 10 Mar 2016 09:13:53 -0600
+
 pgutil (0.2.0-1) unstable; urgency=low
 
   * Converted to new data model.

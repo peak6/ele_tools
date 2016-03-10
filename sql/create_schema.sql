@@ -107,7 +107,8 @@ CREATE INDEX idx_instance_master_id ON ele_instance (master_id);
 CREATE OR REPLACE VIEW v_dr_pairs AS
 SELECT DISTINCT ON (herd_id)
        r.herd_id, r.instance_id, r.master_id, r.server_id,
-       round(abs(coalesce(p.xlog_pos, 0) - coalesce(r.xlog_pos, 0)) / 1024.0, 1) AS mb_lag,
+       round(abs(coalesce(p.xlog_pos, 0) - 
+                 coalesce(r.xlog_pos, 0)) / 1024.0 / 1024.0, 2) AS mb_lag,
        h.vhost
   FROM ele_instance r
   JOIN ele_instance p ON (p.instance_id = r.master_id)
