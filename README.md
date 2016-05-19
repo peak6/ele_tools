@@ -46,12 +46,12 @@ Usage Instructions
 
 There is currenly only one CLI tool that does any work. It will search for local PostgreSQL instances and report them to a remote system.
 
-ele_tools_report
--------------
+ele_report
+----------
 
 This utility should be executed as the same user that owns the database files, as it needs access to the PGDATA directory. Its only purpose is to communicate with an upstream system and tell it which instances exist locally, and their current status.
 
-configuring ele_tools_report
+configuring ele_report
 -------------------------
 
 By default, the configuration file resides in `/etc/ele_tools/report.ini`. To configure for regular reports, create this file and set several fields in the `[Local]` section. Set all fields necessary to connect to the remote administration system.
