@@ -55,12 +55,15 @@ def main():
             sDataDir = inst.pgdata, sMasterHost = inst.master_host,
             nXlog = inst.xlog_pos
         )
-        params = curr_info
 
         # To avoid overloading the remote admin system, only transmit data
-        # which has changed since the last successful transmission. We can
-        # quickly find the differences since the last capture and build
-        # what will be the parameter list to the remote proc.
+        # when at least one optional field has changed since the last
+        # successful transmission. We can quickly find any differences
+        # by checking against our cache, if available. The stored
+        # procedure will do an INSERT or UPDATE based on whether this
+        # instance is listed already or not, so we can't know which is
+        # happening. Thus, we have to send all information whenever a
+        # change is detected.
 
         cache_file = os.path.join(os.sep, 'tmp',
             'ele_tools.%s.%s.cache' % (inst.name, inst.port) 
@@ -68,22 +71,12 @@ def main():
 
         if os.path.exists(cache_file):
             prev_info = pickle.load(open(cache_file, 'rb'))
-
-            # Only keep information that's changed since last time. We also
-            # need to retain the minimal parameters necessary to uniquely
-            # identify this instance.
-
-            params = {}
-            for k, v in curr_info.items():
-                if k in ('sHerd', 'nPort', 'sHost') or prev_info[k] != v:
-                    params[k] = v
-
-        if len(params) < 4:
-            if args.debug:
-                logging.debug(
-                    " * " + inst.name + " hasn't changed since last xmit."
-                )
-            continue
+            if curr_info == prev_info:
+                if args.debug:
+                    logging.debug(
+                        " * %s hasn't changed since last xmit.", inst.name
+                    )
+                continue
 
         # Now transmit the various elements. Build the function call based
         # on the fields remaining in the argument list.
@@ -101,10 +94,12 @@ def main():
         # the next iteration; any problems will prevent the cache, so we can
         # try again later.
 
-        sql_params = ', '.join([k + ':=%(' + k + ')s' for k in params.keys()])
+        sql_params = ', '.join(
+            [k + ':=%(' + k + ')s' for k in curr_info.keys()]
+        )
         SQL = "SELECT utility.sp_instance_checkin(" + sql_params + ')'
 
-        cur.execute(SQL, params)
+        cur.execute(SQL, curr_info)
 
         pickle.dump(curr_info, open(cache_file, 'wb'))
 
