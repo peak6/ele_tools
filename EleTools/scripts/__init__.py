@@ -1,4 +1,4 @@
-from PGUtil import __version__
+from EleTools import __version__
 from argparse import ArgumentParser
 
 import logging

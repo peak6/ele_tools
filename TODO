@@ -1,3 +1,6 @@
 Proposed Features
 =================
 
+* Add Debian-style cluster replacement scripts.
+* Configure above with /etc/ele_tools config files for paths, etc.
+

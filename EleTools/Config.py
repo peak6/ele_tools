@@ -5,7 +5,7 @@ import os
 import re
 
 class Config:
-    """ Config class for PGUtil CLI Utilities
+    """ Config class for EleTools CLI Utilities
     """
 
     config_file = None

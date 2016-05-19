@@ -4,7 +4,7 @@ import getpass
 import subprocess
 
 from distutils import spawn
-from PGUtil.Instance import Instance
+from EleTools.Instance import Instance
 
 class Environment(object):
     """ Mine a local server environment for PostgreSQL cluster instances

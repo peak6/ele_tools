@@ -179,7 +179,7 @@ class Instance(object):
             # since it's more precise.
 
             cur = temp_conn.cursor()
-            SQL = "SELECT substring(version() FROM '\d+\.\d+\.\d+')"
+            SQL = "SELECT substring(version() FROM '\d+(?:\.\d+){1,2}')"
             cur.execute(SQL)
             self.version = cur.fetchone()[0]
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-from PGUtil import scripts
-import PGUtil as util
+from EleTools import scripts
+import EleTools as util
 
 import os
 import sys
@@ -11,7 +11,7 @@ import pickle
 
 def main():
     parser = scripts.get_arg_parser('Transmit Local PG Instance Report')
-    parser.set_defaults(config='/etc/pg_util/report.ini')
+    parser.set_defaults(config='/etc/ele_tools/report.ini')
 
     args = parser.parse_args()
     scripts.init_logging(args.log, args.debug)
@@ -63,7 +63,7 @@ def main():
         # what will be the parameter list to the remote proc.
 
         cache_file = os.path.join(os.sep, 'tmp',
-            'pgutil.' + inst.name + '.cache'
+            'ele_tools.%s.%s.cache' % (inst.name, inst.port) 
         )
 
         if os.path.exists(cache_file):

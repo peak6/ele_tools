@@ -1,23 +1,30 @@
-pgutil (0.2.1-1) unstable; urgency=low
+ele_tools (0.3.0-1) unstable; urgency=low
+
+  * Renamed to ele_tools from ele_tools.
+  * Generalized for public distribution.
+
+ -- Shaun Thomas <sthomas@peak6.com>  Thu, 19 May 2016 11:03:34 -0500
+
+ele_tools (0.2.1-1) unstable; urgency=low
 
   * Fixed issue where invalid instances prevent further transmission.
   * Now sort DR pairs properly by ascending lag.
 
  -- Shaun Thomas <sthomas@peak6.com>  Thu, 10 Mar 2016 09:13:53 -0600
 
-pgutil (0.2.0-1) unstable; urgency=low
+ele_tools (0.2.0-1) unstable; urgency=low
 
   * Converted to new data model.
 
  -- Shaun Thomas <sthomas@peak6.com>  Wed, 24 Feb 2016 13:01:19 -0600
 
-pgutil (0.1.2-1) unstable; urgency=low
+ele_tools (0.1.2-1) unstable; urgency=low
 
   * Fixes to pg_lscluster instance grouping.
 
  -- Shaun Thomas <sthomas@peak6.com>  Thu, 25 Jun 2015 09:23:38 -0500
 
-pgutil (0.1.0-1) unstable; urgency=low
+ele_tools (0.1.0-1) unstable; urgency=low
 
   * Initial release
 

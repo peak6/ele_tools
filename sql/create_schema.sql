@@ -1,6 +1,14 @@
 /**
 * Create The Utility / Management Schema and Objects
 *
+* By default, ElepHaaS uses the utility schema. We will assume the same.
+* Maybe at some point in the future, we will move several of the support
+* views and functions into an extension and deprecate this entire file.
+* As such, this file only defines some loose functions that the CLI tools
+* might need to invoke on the primary ElepHaaS server. Tables, views or
+* other permanent fixtures should be viewed directly in the ElepHaaS
+* project.
+*
 * @author Shaun Thomas <sthomas@peak6.com>
 * @package: tools
 * @subpackage: ddl
@@ -38,95 +46,23 @@ ALTER DEFAULT PRIVILEGES
    IN SCHEMA utility
 GRANT EXECUTE ON FUNCTIONS TO util_exec;
 
+GRANT ALL
+   ON ALL TABLES IN SCHEMA utility
+   TO util_exec;
+
+GRANT ALL
+   ON ALL SEQUENCES IN SCHEMA utility
+   TO util_exec;
+
 -- Switch to the utility schema for all subsequent work.
 
 SET search_path TO utility;
 
 --------------------------------------------------------------------------------
--- CREATE TABLES
+-- CREATE TABLES / VIEWS 
 --------------------------------------------------------------------------------
 
-/* Tables are supplied by elephaas project, and these versions might
-   not be up to date */
-
-CREATE TABLE IF NOT EXISTS ele_environment
-(
-  environment_id  SERIAL NOT NULL PRIMARY KEY,
-  env_name        VARCHAR(40) NOT NULL,
-  env_descr       text NOT NULL,
-  created_dt      TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
-  modified_dt     TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS ele_herd
-(
-    herd_id         SERIAL NOT NULL PRIMARY KEY,
-    environment_id  INTEGER NOT NULL REFERENCES ele_environment (environment_id),
-    herd_name       VARCHAR NOT NULL,
-    herd_descr      VARCHAR,
-    db_port         INTEGER NOT NULL,
-    pgdata          VARCHAR NOT NULL,
-    vhost           VARCHAR NOT NULL,
-    created_dt      TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
-    modified_dt     TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS ele_server
-(
-    server_id       SERIAL NOT NULL PRIMARY KEY,
-    hostname        VARCHAR(40) NOT NULL,
-    created_dt      TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
-    modified_dt     TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
-    environment_id  INTEGER REFERENCES ele_environment (environment_id)
-);
-
-CREATE INDEX idx_server_environment_id ON ele_server (environment_id);
-
-CREATE TABLE IF NOT EXISTS ele_instance
-(
-    instance_id   SERIAL NOT NULL PRIMARY KEY,
-    version       VARCHAR(10) NOT NULL,
-    local_pgdata  VARCHAR(100) NOT NULL,
-    xlog_pos      BIGINT,
-    is_online     BOOLEAN NOT NULL,
-    created_dt    TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
-    modified_dt   TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
-    herd_id       INTEGER NOT NULL REFERENCES ele_herd (herd_id),
-    server_id     INTEGER NOT NULL REFERENCES ele_server (server_id),
-    master_id     INTEGER REFERENCES ele_instance (instance_id)
-);
-
-CREATE INDEX idx_instance_server_id ON ele_instance (server_id);
-CREATE INDEX idx_instance_herd_id ON ele_instance (herd_id);
-CREATE INDEX idx_instance_master_id ON ele_instance (master_id);
-
---------------------------------------------------------------------------------
--- CREATE VIEWS
---------------------------------------------------------------------------------
-
-CREATE OR REPLACE VIEW v_dr_pairs AS
-SELECT DISTINCT ON (herd_id)
-       r.herd_id, r.instance_id, r.master_id, r.server_id,
-       round(abs(coalesce(p.xlog_pos, 0) - 
-                 coalesce(r.xlog_pos, 0)) / 1024.0 / 1024.0, 2) AS mb_lag,
-       h.vhost
-  FROM ele_instance r
-  JOIN ele_instance p ON (p.instance_id = r.master_id)
-  JOIN ele_herd h ON (h.herd_id = r.herd_id)
- WHERE r.is_online
-   AND r.master_id IS NOT NULL
- ORDER BY herd_id, mb_lag, r.instance_id;
-
-CREATE OR REPLACE VIEW v_flat_instance AS
-SELECT i.instance_id, i.version, h.pgdata, i.local_pgdata, i.xlog_pos,
-       i.is_online, h.base_name, h.herd_name, h.db_port, h.vhost,
-       s.server_id, s.hostname, i.master_id,
-       e.environment_id, e.env_name
-  FROM utility.ele_instance i
-  JOIN utility.ele_herd h USING (herd_id)
-  JOIN utility.ele_environment e USING (environment_id)
-  JOIN utility.ele_server s USING (server_id);
-
+-- Nothing here. See ElepHaaS project
 
 --------------------------------------------------------------------------------
 -- CREATE FUNCTIONS
@@ -239,6 +175,7 @@ BEGIN
     FROM utility.v_flat_instance
    WHERE hostname = sHost
      AND base_name = sHerd
+     AND db_port = nPort
      FOR UPDATE;
 
   -- If there's master information, look up the instance of the referring
@@ -248,7 +185,8 @@ BEGIN
     SELECT INTO nLead instance_id
       FROM utility.v_flat_instance
      WHERE hostname = sMasterHost
-       AND base_name = sHerd;
+       AND base_name = sHerd
+       AND db_port = nPort;
   END IF;
 
   -- If this instance doesn't exist, dump all of the fields into the tracking
@@ -317,65 +255,3 @@ BEGIN
 
 END;
 $$ LANGUAGE plpgsql;
-
-
-/**
-* Update created/modified timestamp automatically
-*
-* This function maintains two metadata columns on any table that uses
-* it in a trigger. These columns include:
-*
-*  - created_dt  : Set to when the row first enters the table.
-*  - modified_at : Set to when the row is ever changed in the table.
-*
-* @return object  NEW
-*/
-CREATE OR REPLACE FUNCTION PUBLIC.sp_audit_stamps()
-RETURNS TRIGGER AS
-$$
-BEGIN
-
-  -- All inserts get a new timestamp to mark their creation. Any updates should
-  -- inherit the timestamp of the old version. In either case, a modified
-  -- timestamp is applied to track the last time the row was changed.
-
-  IF TG_OP = 'INSERT' THEN
-    NEW.created_dt = now();
-  ELSE
-    NEW.created_dt = OLD.created_dt;
-  END IF;
-
-  NEW.modified_dt = now();
-
-  RETURN NEW;
-
-END;
-$$ LANGUAGE plpgsql;
-
-REVOKE EXECUTE
-    ON FUNCTION PUBLIC.sp_audit_stamps()
-  FROM PUBLIC;
-
-GRANT EXECUTE
-   ON FUNCTION PUBLIC.sp_audit_stamps()
-   TO util_exec;
-
---------------------------------------------------------------------------------
--- CREATE TRIGGERS
---------------------------------------------------------------------------------
-
-CREATE TRIGGER t_ele_instance_timestamp_b_iu
-BEFORE INSERT OR UPDATE ON ele_instance
-   FOR EACH ROW EXECUTE PROCEDURE PUBLIC.sp_audit_stamps();
-
-CREATE TRIGGER t_ele_herd_timestamp_b_iu
-BEFORE INSERT OR UPDATE ON ele_herd
-   FOR EACH ROW EXECUTE PROCEDURE PUBLIC.sp_audit_stamps();
-
-CREATE TRIGGER t_ele_server_timestamp_b_iu
-BEFORE INSERT OR UPDATE ON ele_server
-   FOR EACH ROW EXECUTE PROCEDURE PUBLIC.sp_audit_stamps();
-
-CREATE TRIGGER t_ele_environment_timestamp_b_iu
-BEFORE INSERT OR UPDATE ON ele_environment
-   FOR EACH ROW EXECUTE PROCEDURE PUBLIC.sp_audit_stamps();

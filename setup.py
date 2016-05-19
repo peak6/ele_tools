@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 
 from setuptools import setup
-import PGUtil
+import EleTools
 
-setup(name=PGUtil.__name__,
-      version=PGUtil.__version__,
-      description="PGUtil is a set of helper classes for managing PostgreSQL instances.",
-      long_description=PGUtil.__doc__,
+setup(name=EleTools.__name__,
+      version=EleTools.__version__,
+      description="ele_tools is a set of helper classes for managing PostgreSQL instances, mainly for ElepHaaS.",
+      long_description=EleTools.__doc__,
       author='Shaun M. Thomas',
       author_email='sthomas@peak6.com',
-      license='New BSD License',
+      license='Apache License 2.0',
       url='http://www.peak6.com/',
-      packages=['PGUtil', 'PGUtil.scripts'],
+      packages=['EleTools', 'EleTools.scripts'],
       tests_require=['nose>=0.11',],
       install_requires=['psycopg2'],
       test_suite = 'nose.collector',
@@ -30,7 +30,7 @@ setup(name=PGUtil.__name__,
       ],
       entry_points = {
           'console_scripts': [
-              'pgutil_report = PGUtil.scripts.instances:main',
+              'ele_report = EleTools.scripts.instances:main',
           ]
       }
 )
