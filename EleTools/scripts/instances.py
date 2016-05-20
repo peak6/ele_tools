@@ -21,14 +21,15 @@ def main():
     # the instances.
 
     sections = {
-        'Local': {
+        'Upstream': {
             'db_host': '',
             'db_port': '5432',
             'db_user': 'util_user',
-            'db_name': 'utility',
+            'db_name': 'admin',
         }
     }
-    conf = util.Config(args.config, sections)
+    all_conf = util.Config(args.config, sections)
+    conf = all_conf.upstream
 
     # Loop through all of the known instances and call the registration
     # function on each. This assumes that the target system has the
