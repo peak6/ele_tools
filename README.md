@@ -44,7 +44,7 @@ To grant usage of these objects to non superusers, grant access using the `util_
 Usage Instructions
 ==================
 
-There is currenly only one CLI tool that does any work. It will search for local PostgreSQL instances using `pg_lsclusters` and report them to a remote system running ElepHaaS. Future versions will likely also supply a wrapper for `pg_ctl` and remove the dependency on `pg_lsclusters` for better support of non-Debian derived OS hosts.
+There is currenly only one CLI tool that does any work. It will search for local PostgreSQL instances using ports reserved in `/tmp` or `/var/run/postgresql`. If this is a Debian-based distribution, it will also make use of `pg_lsclusters`. Once detected, the tool will report instances to a remote system running ElepHaaS. More or better detection methods should be incorporated in future versions.
 
 ele_report
 ----------

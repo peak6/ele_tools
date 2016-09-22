@@ -1,3 +1,10 @@
+ele_tools (0.4.0-1) unstable; urgency=low
+
+  * Added instance detection through socket lock files.
+  * Moved pg_lsclusters detection to provide supplementary details.
+
+ -- Shaun Thomas <sthomas@peak6.com>  Thu, 22 Sep 2016 14:34:02 -0500
+
 ele_tools (0.3.0-1) unstable; urgency=low
 
   * Renamed to ele_tools from ele_tools.

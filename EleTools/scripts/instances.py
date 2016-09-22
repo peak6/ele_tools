@@ -45,6 +45,8 @@ def main():
         conf.db_port)
     cur = conn.cursor()
 
+    env.discover()
+
     for inst in env.instances.values():
 
         if inst.invalid:
