@@ -1,3 +1,9 @@
+ele_tools (0.4.1-1) unstable; urgency=low
+
+  * New replica detection now uses primary info for better herd matches.
+
+ -- Shaun Thomas <sthomas@peak6.com>  Wed, 19 Apr 2017 11:05:26 -0500
+
 ele_tools (0.4.0-1) unstable; urgency=low
 
   * Added instance detection through socket lock files.

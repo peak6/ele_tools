@@ -195,19 +195,29 @@ BEGIN
 
   IF rInst.instance_id IS NULL THEN
 
-    -- Try to get the existing herd ID, Server ID. If we can't find either
+    -- Try to get the existing herd ID and Server ID. If we can't find either
     -- of these, do not capture the instance. More needs to be done in the
     -- admin interface to describe the environment or create a representative
-    -- herd.
+    -- herd. This is a lossy check, especially if multiple herds with the
+    -- same base_name exist in the same environment. That means this works
+    -- best if we have the name of the master server to derive the correct
+    -- herd. Autodiscovery is kinda treacherous like that.
 
     nSrv = utility.sp_discover_server(sHost);
 
-    SELECT INTO rHerd herd_id, pgdata
-      FROM utility.ele_herd h
-     WHERE base_name = lower(sHerd)
-       AND db_port = nPort
-       AND environment_id = (SELECT environment_id FROM utility.ele_server
-                              WHERE server_id = nSrv);
+    IF nLead IS NULL THEN
+      SELECT INTO rHerd herd_id, pgdata
+        FROM utility.ele_herd h
+       WHERE base_name = lower(sHerd)
+         AND db_port = nPort
+         AND environment_id = (SELECT environment_id FROM utility.ele_server
+                                WHERE server_id = nSrv);
+    ELSE
+      SELECT INTO rHerd h.herd_id, h.pgdata
+        FROM utility.ele_instance i
+        JOIN utility.ele_herd h USING (herd_id)
+       WHERE i.instance_id = nLead;
+    END IF;
 
     IF nSrv IS NULL OR NOT FOUND THEN
       RETURN;
